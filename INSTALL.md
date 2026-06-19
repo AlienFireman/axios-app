@@ -3,7 +3,7 @@
 Termato is a **personal** workspace: it runs as your normal user account (no root, no
 service user) inside your home directory, where it manages your git repos, creates
 task branches under `$HOME/.worktrees`, and uses your `~/.claude` config. The
-recommended location is **`~/.axios`**, but it works at any path.
+recommended location is **`~/.termato`**, but it works at any path.
 
 > **Run it where it belongs.** Termato gives Claude shell and filesystem access **as
 > the user that runs it** — anything that user can read or change, Claude can too.
@@ -18,25 +18,25 @@ recommended location is **`~/.axios`**, but it works at any path.
   own subscription.
 
 Everything else — a pinned Node runtime, the reverse proxy, and the secure tunnel —
-is set up for you and kept inside `~/.axios`, never touching your system.
+is set up for you and kept inside `~/.termato`, never touching your system.
 
 ## Install
 
 ```bash
-git clone https://github.com/AlienFireman/termato-app.git ~/.axios
-bash ~/.axios/install.sh
+git clone https://github.com/AlienFireman/termato-app.git ~/.termato
+bash ~/.termato/install.sh
 ```
 
 The installer prompts for a **username** and a **password** — nothing else to
-configure. (For an unattended install, pre-set `AXIOS_USERNAME` and `TERMATO_PASSWORD`
+configure. (For an unattended install, pre-set `TERMATO_USERNAME` and `TERMATO_PASSWORD`
 to skip the prompts.) It then:
 
-- sets up a private **Node 22** runtime in `~/.axios/.node` (your system Node is
+- sets up a private **Node 22** runtime in `~/.termato/.node` (your system Node is
   never used or modified),
 - installs anything missing (pm2, plus the Caddy + cloudflared **binaries** — no
   system services),
 - configures a private reverse proxy and an encrypted **Cloudflare Tunnel**,
-- starts everything under pm2 (`axios`, `axios-caddy`, `axios-tunnel`) and enables
+- starts everything under pm2 (`termato`, `termato-caddy`, `termato-tunnel`) and enables
   start-on-boot.
 
 When it finishes, open `https://termato-<username>.fordweb.io` — try it from your phone
@@ -70,8 +70,8 @@ Your password is stored only as a one-way **scrypt** hash, so there’s nothing 
 back. To change it:
 
 ```bash
-cd ~/.axios && npm run set-password      # hidden prompt, updates your config
-pm2 restart axios --update-env
+cd ~/.termato && npm run set-password      # hidden prompt, updates your config
+pm2 restart termato --update-env
 ```
 
 Add `-- --rotate-sessions` to also log out every device. If the brute-force throttle
