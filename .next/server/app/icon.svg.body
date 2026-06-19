@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#1d1d22"/>
+      <stop offset="100%" stop-color="#0c0c0f"/>
+    </linearGradient>
+    <radialGradient id="glow-bg" cx="48%" cy="52%" r="52%">
+      <stop offset="0%" stop-color="#f97316" stop-opacity="0.15"/>
+      <stop offset="100%" stop-color="#f97316" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="bolt" x1="65%" y1="0%" x2="35%" y2="100%">
+      <stop offset="0%"   stop-color="#fffdf0"/>
+      <stop offset="22%"  stop-color="#fde047"/>
+      <stop offset="62%"  stop-color="#fb923c"/>
+      <stop offset="100%" stop-color="#b45309"/>
+    </linearGradient>
+    <filter id="glow" x="-55%" y="-55%" width="210%" height="210%" color-interpolation-filters="linearRGB">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="1.6" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="32" height="32" rx="7" fill="url(#bg)"/>
+  <!-- Ambient glow tint -->
+  <rect width="32" height="32" rx="7" fill="url(#glow-bg)"/>
+  <!-- Subtle border -->
+  <rect width="32" height="32" rx="7" fill="none" stroke="rgba(255,255,255,0.07)" stroke-width="0.75"/>
+
+  <!-- Lightning bolt with glow halo -->
+  <path d="M18 2 L8 17 L14 17 L12 30 L22 15 L16 15 Z"
+        fill="url(#bolt)" filter="url(#glow)"/>
+</svg>

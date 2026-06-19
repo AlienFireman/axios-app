@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "functions": {
+    "/api/auth/preview": {},
+    "/api/axios-config": {},
+    "/api/chat": {},
+    "/api/claude-usage": {},
+    "/api/control": {},
+    "/api/events": {},
+    "/api/file": {},
+    "/api/files": {},
+    "/api/fs/browse": {},
+    "/api/git": {},
+    "/api/git-status": {},
+    "/api/history": {},
+    "/api/housekeeping": {},
+    "/api/metrics": {},
+    "/api/projects": {},
+    "/api/projects/clone": {},
+    "/api/projects/import": {},
+    "/api/rebuild": {},
+    "/api/session": {},
+    "/api/sessions": {},
+    "/api/settings": {},
+    "/api/terminals": {},
+    "/api/transcribe": {},
+    "/api/update": {},
+    "/api/user-config": {},
+    "/api/worktrees": {},
+    "/opengraph-image": {}
+  }
+}
