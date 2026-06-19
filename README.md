@@ -35,7 +35,7 @@ same one waiting in your pocket** — no setup, no syncing, no thinking about it
 - **Hand off mid-thought.** Start working in a session on your desktop, get up to
   leave, and carry straight on from your phone. Your place is exactly where you left it.
 - **Queue and walk away.** Line up follow-up messages from your phone, close the app,
-  and put it away. Termato holds your queue **server-side** and fires each one
+  and put it away. Termato keeps your queue **on your own machine** and fires each one
   automatically as the current turn finishes — your work keeps moving while you don’t
   have to.
 - **One workspace, every device.** Desktop and mobile are both first-class and always
@@ -51,9 +51,9 @@ every device** — and, unusually, it’s genuinely a pleasure to use on a phone
   crisp and readable at any width, on any screen — the cross-device terminal problems
   you’re used to simply aren’t there.
 - **Resume in one tap, with full context** — reopen any session and it’s exactly as you
-  left it, even days later.
+  left it, even weeks later.
 - **New sessions on the fly**, whenever you need one.
-- **Run whatever you want in it** — Claude Code, another AI CLI, or just your shell.
+- **Run whatever you want in it** — Claude Code, Codex, another AI CLI, or just your shell.
   The terminal is yours; Termato makes it portable.
 
 ## Hundreds of sessions, beautifully organized
@@ -64,21 +64,21 @@ device, all kept tidy and in order.
 
 ## Terminal *or* chat — your choice
 
-Use your terminal the way you always have. Or, if you run **Claude Code**, switch to
-Termato’s clean, friendly **chat interface** — it talks to your Claude Code subscription
-underneath, so you get a polished, mobile-ready way to work with your AI without leaving
-the terminal behind. Some people love the terminal; some love the chat. Termato gives you
-both, side by side.
+Run **Claude Code** in your terminal exactly the way you do today — that’s the familiar
+route, and it’s fully supported. When you’d rather have something more visual, Termato also
+gives you a clean, **mobile-friendly chat interface** over Claude Code: the same
+subscription underneath, wrapped in a polished UI that’s a genuine pleasure to use on a
+phone. Live in the terminal, live in the chat, or move between them whenever you like.
 
-> The terminal stands on its own and works with anything. Claude Code simply unlocks the
-> chat experience on top of it.
+> Prefer to stay in the terminal? Stay there — the chat is an option, never a requirement.
 
-## An agent that can drive the interface
+## Browser previews, kept in context
 
-When you pair Termato with an AI agent, it can **control the workspace itself**. Finish a
-task and your agent can open the built-in browser and **show you the result the moment
-you come back to the chat** — so it doesn’t just describe what it built, it puts it in
-front of you.
+Every live preview stays tied to the chat or terminal workspace it belongs to, so what
+you’re looking at always matches what you’re working on. And when you pair Termato with an
+AI agent, it can open the preview **for you, in the right workspace** — set up and waiting
+for your review when you come back, instead of a backgrounded CLI suddenly throwing a
+browser window in front of whatever else you’re doing.
 
 ## It fits your workflow — and changes nothing about it
 
@@ -99,12 +99,14 @@ architecture is built so your work never has to be trusted to anyone but you.
   couldn’t see your data if we wanted to, because it never reaches us.
 - **Straight to the source.** When you use AI, requests go directly to your provider
   under your own account — no extra hop, no broker, no copy kept anywhere.
-- **Invisible to the internet.** Remote access runs over an **outbound-only encrypted
-  tunnel**. Your machine opens no inbound ports and can’t be discovered, scanned, or
-  reached from the public internet.
-- **Authenticated end to end.** Every request — the app and your live previews alike —
-  is gated behind hardened, cryptographically signed sessions.
-- **Runs only on hardware you control.** No cloud, no telemetry, no analytics — ever.
+- **Reachable from anywhere — but only by you.** Open your workspace from any device through
+  your own private endpoint, while your machine exposes **no inbound ports** for anyone to
+  find or scan. The encrypted tunnel only ever reaches *out* — the public internet can never
+  reach *in*.
+- **A serious front door.** Everything sits behind a hardened login wall with brute-force
+  protection, cryptographically signed sessions, and optional IP allow-listing — for the app
+  and your live previews alike.
+- **Runs only on hardware you control.** No cloud, no telemetry, no analytics.
 
 ---
 
@@ -113,16 +115,20 @@ architecture is built so your work never has to be trusted to anyone but you.
 - **Live previews** of the apps you build, right next to your terminal — in a built-in
   browser, on any device.
 - **A fast, polished editor** with tabs and a markdown toolbar.
-- **Voice input**, **usage at a glance**, and **skills + scheduled agents**.
-- **Start any project in seconds** — import a folder, clone a repo, or scaffold a new
-  one, and Termato works out how to run it for you.
+- **Voice input** and **usage at a glance**.
+- **Build anything.** Python apps, web apps, scripts, APIs — whatever you’d build with
+  Claude Code, you can build here. Import a folder, clone a repo, or start from scratch, and
+  Termato works out how to run it; anything visual, like a website or web app, renders live
+  in the built-in browser.
 - A UI that’s quick, fluid, and a genuine pleasure to use on every screen.
 
 ---
 
 ## Install
 
-One line — it’ll ask for a username and password, then set itself up:
+One line to install. Termato sets up everything for you — its own runtime, free ports, and
+secure remote access — and asks only two quick things: a **username** (the personal
+subdomain you’ll open Termato at) and a **password** (your private login). Then you’re in.
 
 ```bash
 git clone https://github.com/AlienFireman/termato-app.git ~/.termato && bash ~/.termato/install.sh
@@ -133,9 +139,10 @@ ports, configures a private reverse proxy and the encrypted tunnel, and runs und
 with start-on-boot — all without touching the rest of your system. Works on
 **Debian/Ubuntu** and **macOS**.
 
-The terminal works on its own with nothing extra. To use the AI **chat** features, you’ll
-need the **Claude Code** CLI and an Anthropic account (Termato drives Claude under your
-own subscription).
+You get the **full power of Termato with no AI subscription at all** — every terminal,
+preview, and cross-device feature works out of the box. Only the AI **chat** interface
+needs a **Claude Code** CLI and an Anthropic account (support for Codex and other AI
+subscriptions is coming soon).
 
 See **[INSTALL.md](INSTALL.md)** for details.
 
