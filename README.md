@@ -148,8 +148,8 @@ See **[INSTALL.md](INSTALL.md)** for details.
 
 ## Updating
 
-Termato checks for new versions on startup and from **Settings → Server**. Click
-**Update & Restart** — no terminal required.
+Termato keeps itself current — you’ll be notified when a new version is ready, and updating
+is a single click. No terminal, no reinstalling.
 
 ---
 
