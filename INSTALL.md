@@ -39,7 +39,7 @@ to skip the prompts.) It then:
 - starts everything under pm2 (`termato`, `termato-caddy`, `termato-tunnel`) and enables
   start-on-boot.
 
-When it finishes, open `https://termato-<username>.fordweb.io` — try it from your phone
+When it finishes, open `https://<username>.termato.com` — try it from your phone
 over cellular to confirm remote access works.
 
 ## How remote access works
@@ -51,9 +51,9 @@ public internet. You don’t register a domain or configure DNS: the installer r
 a set of subdomains and a tunnel for you during setup.
 
 You get:
-- the app at **`https://termato-<username>.fordweb.io`**
-- live app previews at **`https://<animal>-<username>.fordweb.io`** (e.g.
-  `beaver-dan.fordweb.io`) — memorable animal names instead of port numbers.
+- the app at **`https://<username>.termato.com`**
+- live app previews at **`https://<animal>-<username>.termato.com`** (e.g.
+  `beaver-dan.termato.com`) — memorable animal names instead of port numbers.
 
 The install is deliberately **non-invasive**: it never touches the system Caddy /
 nginx or ports 80/443 (it runs its own private proxy on a high localhost port), and

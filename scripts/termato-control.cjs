@@ -1,0 +1,10 @@
+#!/usr/bin/env node
+"use strict";const PORT=process.env.PORT||process.env.TERMATO_PORT||"3002",ENDPOINT=`http://127.0.0.1:${PORT}/api/control`,sessionId=process.env.TERMATO_CHAT_ID||process.env.TERMATO_TERMINAL_ID||"",projectPath=process.env.TERMATO_PROJECT_PATH||process.cwd(),argv=process.argv.slice(2),action=argv[0];(!action||action==="-h"||action==="--help")&&(process.stderr.write(`usage: termato-control <action> [positional] [key=value ...] [--json '<json>']
+actions: browser.open|browser.navigate|browser.reload|browser.close|
+         server.start|server.restart|server.stop|server.status|
+         project.create|list.projects
+`),process.exit(action?0:1));const body={action};sessionId&&(body.chatId=sessionId),action.startsWith("server.")&&(body.projectPath=projectPath);const positionals=[];let rawJson=null;for(let e=1;e<argv.length;e++){const t=argv[e];if(t==="--json"){rawJson=argv[++e];continue}const s=t.match(/^([a-zA-Z][\w.]*)=(.*)$/);if(s){body[s[1]]=coerce(s[2]);continue}positionals.push(t)}if(positionals.length)switch(action){case"browser.navigate":case"browser.open":body.url=positionals[0];break;case"server.start":case"server.restart":body.mode=positionals[0];break;case"project.create":body.name=positionals.join(" ");break;default:break}if(rawJson)try{Object.assign(body,JSON.parse(rawJson))}catch(e){fail(`--json is not valid JSON: ${e.message}`)}function coerce(e){return e==="true"?!0:e==="false"?!1:/^-?\d+$/.test(e)?Number(e):e}function fail(e){process.stderr.write(`termato-control: ${e}
+`),process.exit(1)}(async()=>{sessionId||process.stderr.write(`termato-control: warning \u2014 no $TERMATO_CHAT_ID / $TERMATO_TERMINAL_ID in env; the pane may target the chat the user is viewing. Pass chatId=<id> to be explicit.
+`);let e;try{e=await fetch(ENDPOINT,{method:"POST",headers:{"Content-Type":"application/json","X-Forwarded-For":"127.0.0.1",...sessionId?{"X-Termato-Session-Id":sessionId}:{}},body:JSON.stringify(body)})}catch(s){fail(`request failed (is the Termato app on :${PORT}?): ${s.message}`)}const t=await e.text();process.stdout.write(t.endsWith(`
+`)?t:t+`
+`),process.exit(e.ok?0:1)})();
