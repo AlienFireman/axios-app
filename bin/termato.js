@@ -18,7 +18,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const http = require('node:http');
 const readline = require('node:readline');
-const { spawnSync } = require('node:child_process');
+const { spawnSync, spawn } = require('node:child_process');
 
 // Resolve the install root from this script's REAL location (works when symlinked
 // onto PATH, e.g. /usr/local/bin/termato → <install>/bin/termato.js).
@@ -206,6 +206,116 @@ async function cmdClientsRemove(arg) {
   console.log(green(`✓ Removed device ${index}`) + (r?.label ? ` (${r.label})` : ''));
 }
 
+// ── uninstall ─────────────────────────────────────────────────────────────────
+function readEnvLocal() {
+  const out = {};
+  try {
+    const txt = fs.readFileSync(path.join(INSTALL_DIR, '.env.local'), 'utf8');
+    for (const line of txt.split('\n')) {
+      const m = line.match(/^\s*([A-Za-z0-9_]+)\s*=\s*(.*)$/);
+      if (m) out[m[1]] = m[2].trim();
+    }
+  } catch { /* no env file */ }
+  return out;
+}
+
+// Ask the hub to remove this user's tunnel + subdomains. Best-effort.
+async function deprovision(provisionUrl, username, key) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 20000);
+  try {
+    const res = await fetch(`${provisionUrl.replace(/\/$/, '')}/deprovision`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(key ? { 'X-Provision-Key': key } : {}) },
+      body: JSON.stringify({ username }),
+      signal: ctrl.signal,
+    });
+    let detail = '';
+    try { const j = await res.json(); detail = j?.detail || j?.error || ''; } catch { /* non-JSON */ }
+    return { ok: res.ok, status: res.status, detail };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// Remove the `termato` symlink — but only if it actually points at THIS install.
+function removeSymlink() {
+  const self = fs.realpathSync(__filename);
+  for (const link of ['/usr/local/bin/termato', path.join(process.env.HOME || '', '.local/bin/termato')]) {
+    try {
+      if (!fs.existsSync(link)) continue;
+      let target = '';
+      try { target = fs.realpathSync(link); } catch { /* dangling */ }
+      if (target && target !== self) continue; // someone else's termato — leave it
+      try {
+        fs.unlinkSync(link);
+        console.log(green(`  ✓ removed ${link}`));
+      } catch (e) {
+        if (e.code === 'EACCES' || e.code === 'EPERM') {
+          const r = spawnSync('sudo', ['rm', '-f', link], { stdio: 'inherit' });
+          console.log((r.status || 0) === 0 ? green(`  ✓ removed ${link} (sudo)`) : dim(`  · couldn't remove ${link} — remove it manually`));
+        } else {
+          console.log(dim(`  · couldn't remove ${link}: ${e.message}`));
+        }
+      }
+    } catch { /* ignore */ }
+  }
+}
+
+async function cmdUninstall(flags) {
+  const yes = flags.includes('--yes') || flags.includes('-y');
+  const env = readEnvLocal();
+  const username = env.TERMATO_USERNAME || '';
+  const provisionUrl = env.TERMATO_PROVISION_URL || 'https://provision.termato.com';
+  const key = env.TERMATO_PROVISION_KEY || process.env.TERMATO_PROVISION_KEY || '';
+
+  console.log(bold('Uninstall Termato — this permanently:'));
+  console.log('    • stops & deletes the pm2 processes (termato, termato-caddy, termato-tunnel)');
+  console.log('    • removes the `termato` command from your PATH');
+  console.log(`    • deletes the install directory and ALL data (chats, settings):\n        ${INSTALL_DIR}`);
+  if (username) console.log(`    • asks the hub to remove your tunnel + subdomains for '${username}'`);
+  console.log('');
+
+  if (!yes) {
+    const a = (await prompt('Type "uninstall" to confirm: ')).toLowerCase();
+    if (a !== 'uninstall') { console.log(dim('Cancelled.')); process.exit(0); }
+  }
+
+  // 1. Deprovision (best-effort — box may be offline, or the hub may have provisioning
+  //    turned off; either way the local teardown below still proceeds).
+  if (username) {
+    process.stdout.write(`  Removing tunnel + subdomains for '${username}'… `);
+    try {
+      const r = await deprovision(provisionUrl, username, key);
+      if (r.ok) console.log(green('done'));
+      else if (r.status === 503) console.log(red('skipped') + dim(' (hub provisioning is off — ask the operator to remove it)'));
+      else if (r.status === 401) console.log(red('skipped') + dim(' (hub needs a provisioning key)'));
+      else console.log(red(`failed (${r.status})`) + (r.detail ? dim(` ${r.detail}`) : ''));
+    } catch {
+      console.log(red('skipped') + dim(` (couldn't reach ${provisionUrl})`));
+    }
+  }
+
+  // 2. pm2 processes (best-effort; pm2 may not be on PATH).
+  console.log('  Stopping services…');
+  spawnSync('pm2', ['delete', 'termato', 'termato-caddy', 'termato-tunnel'], { stdio: 'ignore', cwd: INSTALL_DIR });
+  spawnSync('pm2', ['save'], { stdio: 'ignore', cwd: INSTALL_DIR });
+
+  // 3. CLI symlink.
+  console.log('  Removing the termato command…');
+  removeSymlink();
+
+  // 4. Install dir. We're running from inside it (and from its bundled Node), so hand
+  //    the recursive delete to a detached system shell that runs once we've exited.
+  console.log(`  Deleting ${INSTALL_DIR}…`);
+  spawn('sh', ['-c', `sleep 1; rm -rf ${JSON.stringify(INSTALL_DIR)}`], { detached: true, stdio: 'ignore' }).unref();
+
+  console.log('');
+  console.log(green('✓ Termato uninstalled.'));
+  console.log(dim('  (If pm2 starts on boot only for Termato, you can also run: pm2 unstartup)'));
+  process.exit(0);
+}
+
 function usage() {
   console.log(`${bold('termato')} — Termato server control
 
@@ -216,6 +326,8 @@ function usage() {
   ${bold('termato clients')}            list authorised devices
   ${bold('termato clients add')}        authorise a new device
   ${bold('termato clients remove N')}   revoke authorised device N
+
+  ${bold('termato uninstall')}          remove Termato from this machine (--yes to skip the prompt)
 `);
 }
 
@@ -225,6 +337,7 @@ function usage() {
     case 'start':   process.exit(cmdStart());
     case 'stop':    process.exit(cmdStop());
     case 'restart': process.exit(cmdRestart());
+    case 'uninstall': return cmdUninstall(process.argv.slice(3));
     case 'clients':
       if (!sub)               return cmdClientsList();
       if (sub === 'add')      return cmdClientsAdd();
