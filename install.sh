@@ -6,14 +6,14 @@
 #     git clone https://github.com/AlienFireman/termato-app.git ~/.termato
 #     bash ~/.termato/install.sh
 #
-# It prompts interactively for everything it needs (just a username); nothing
+# It prompts interactively for everything it needs (just a machine nickname); nothing
 # else to configure. By default it requests your subdomains + tunnel from the
-# hosted endpoint (provision.termato.com) — just pick a username. (Override:
+# hosted endpoint (provision.termato.com) — just pick a machine nickname. (Override:
 # TERMATO_PROVISION_BUNDLE=<file> for a pre-minted bundle, or TERMATO_PROVISION_URL
 # for a different endpoint.)
 #
 # What it does (the default "tunnel" install):
-#   • gets your bundle (username, tunnel id + credentials, animal preview words)
+#   • gets your bundle (machine nickname, tunnel id + credentials, animal preview words)
 #   • auto-picks free local ports (no port prompts, no clashing with other services)
 #   • builds Termato, writes a PRIVATE Caddy config (its own pm2 process, high localhost
 #     port — never touches the system Caddy/nginx or ports 80/443)
@@ -23,8 +23,9 @@
 # It is deliberately NON-INVASIVE on a shared box: it reuses an existing Node ≥20
 # (never replaces it), never edits system web-server config, and appends to pm2.
 #
-# Non-interactive: set TERMATO_USERNAME to skip all prompts. Termato is password-free —
+# Non-interactive: set TERMATO_NICKNAME (legacy: TERMATO_USERNAME) to skip all prompts. Termato is password-free —
 # devices are authorised after install with `termato clients add`.
+# Start-on-boot defaults to enabled; set TERMATO_ENABLE_BOOT=0 to skip it (interactively you're asked).
 #
 # (Advanced/legacy: TERMATO_INSTALL_TYPE=server runs the old public-host + system-Caddy
 #  flow with its own domain/port prompts. Not offered interactively.)
@@ -105,7 +106,7 @@ if [ "$INSTALL_TYPE" = "tunnel" ]; then
   have jq || { [ "$APT" = 1 ] && apt_install jq || { [ "$BREW" = 1 ] && brew install jq >/dev/null || die "jq is required (install it and re-run)."; }; }
 
   # Provision bundle. By DEFAULT we fetch it live from the hosted provisioning
-  # endpoint (provision.termato.com) — the user just picks a username. Override with
+  # endpoint (provision.termato.com) — the user just picks a machine nickname. Override with
   # TERMATO_PROVISION_BUNDLE=<file> to use a pre-minted bundle, or TERMATO_PROVISION_URL
   # to point at a different endpoint.
   : "${TERMATO_PROVISION_URL:=https://provision.termato.com}"
@@ -113,13 +114,16 @@ if [ "$INSTALL_TYPE" = "tunnel" ]; then
   if [ -n "${TERMATO_PROVISION_BUNDLE:-}" ]; then
     BUNDLE="$TERMATO_PROVISION_BUNDLE"
   else
-    ask TERMATO_USERNAME "$(printf '\033[1;36m[termato]\033[0m Choose a Termato username (lowercase letters, digits, hyphens)')"
-    [[ "$TERMATO_USERNAME" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$ ]] || die "Invalid username (must be a DNS label)."
+    # The machine nickname identifies this box (it becomes part of your preview
+    # subdomains). Accept the legacy TERMATO_USERNAME override for backward compat.
+    : "${TERMATO_NICKNAME:=${TERMATO_USERNAME:-}}"
+    ask TERMATO_NICKNAME "$(printf '\033[1;36m[termato]\033[0m Choose a nickname for this machine (lowercase letters, digits, hyphens)')"
+    [[ "$TERMATO_NICKNAME" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$ ]] || die "Invalid machine nickname (must be a DNS label: lowercase letters, digits, hyphens)."
     c "Setting up your secure tunnel and preview subdomains…"
     TMP_BUNDLE="$(mktemp)"; chmod 600 "$TMP_BUNDLE"; BUNDLE="$TMP_BUNDLE"
     code="$(curl -sS -X POST -H 'Content-Type: application/json' \
       ${TERMATO_PROVISION_KEY:+-H "X-Provision-Key: ${TERMATO_PROVISION_KEY}"} \
-      --data "{\"username\":\"${TERMATO_USERNAME}\"}" \
+      --data "{\"username\":\"${TERMATO_NICKNAME}\"}" \
       -o "$BUNDLE" -w '%{http_code}' "${TERMATO_PROVISION_URL%/}/provision")" \
       || die "Couldn't reach the provisioning service at ${TERMATO_PROVISION_URL}. Check your connection and try again."
     if [ "$code" != "200" ]; then
@@ -128,7 +132,7 @@ if [ "$INSTALL_TYPE" = "tunnel" ]; then
       case "$code" in
         503) die "Provisioning is currently turned off. Ask the operator to enable it, then re-run." ;;
         401) die "Provisioning needs an access key. Set TERMATO_PROVISION_KEY and re-run." ;;
-        409) die "The username '${TERMATO_USERNAME}' is already taken. Pick a different one and re-run." ;;
+        409) die "The machine nickname '${TERMATO_NICKNAME}' is already taken. Pick a different one and re-run." ;;
         429) die "Too many attempts — wait a few minutes and re-run." ;;
         *)   die "Provisioning failed (the server couldn't set up your account).${detail:+ Details: $detail}" ;;
       esac
@@ -483,15 +487,29 @@ EOF
   if pm2 describe termato >/dev/null 2>&1; then PORT="$APP_PORT" pm2 restart termato --update-env >>"$LOG" 2>&1; else PORT="$APP_PORT" pm2 start ecosystem.config.js --update-env >>"$LOG" 2>&1; fi
 fi
 
-# ── 9. Enable start-on-boot (additive) ───────────────────────────────────────
-c "Enabling start-on-boot…"
-STARTUP_CMD="$(pm2 startup 2>>"$LOG" | grep -m1 'env PATH=' || true)"
-if [ -n "$STARTUP_CMD" ]; then
-  if eval "$STARTUP_CMD" >>"$LOG" 2>&1; then c "Start-on-boot enabled."; else warn "Boot-start step failed; enable it later with: pm2 startup"; fi
-else
-  warn "Couldn't set up start-on-boot automatically. Run 'pm2 startup' later and follow its instructions."
+# ── 9. Enable start-on-boot (optional, additive) ─────────────────────────────
+# Default yes. Interactive: ask. Non-interactive: enable unless TERMATO_ENABLE_BOOT=0.
+_enable_boot=1
+if [ "${TERMATO_ENABLE_BOOT:-}" = "0" ]; then
+  _enable_boot=0
+elif [ -z "${TERMATO_ENABLE_BOOT:-}" ] && [ -t 0 ]; then
+  printf '\033[1;36m[termato]\033[0m Start Termato automatically on boot? [Y/n] '
+  read -r _boot || _boot=""
+  case "$_boot" in [Nn]*) _enable_boot=0 ;; esac
 fi
-pm2 save >>"$LOG" 2>&1 || true
+
+if [ "$_enable_boot" = "1" ]; then
+  c "Enabling start-on-boot…"
+  STARTUP_CMD="$(pm2 startup 2>>"$LOG" | grep -m1 'env PATH=' || true)"
+  if [ -n "$STARTUP_CMD" ]; then
+    if eval "$STARTUP_CMD" >>"$LOG" 2>&1; then c "Start-on-boot enabled."; else warn "Boot-start step failed; enable it later with: pm2 startup"; fi
+  else
+    warn "Couldn't set up start-on-boot automatically. Run 'pm2 startup' later and follow its instructions."
+  fi
+  pm2 save >>"$LOG" 2>&1 || true
+else
+  c "Skipped start-on-boot. Enable it anytime with: pm2 startup && pm2 save"
+fi
 
 # Don't leave a fetched bundle (contains tunnel credentials) lying in /tmp.
 [ -n "${TMP_BUNDLE:-}" ] && rm -f "$TMP_BUNDLE" || true
@@ -499,10 +517,7 @@ pm2 save >>"$LOG" 2>&1 || true
 rm -f "$LOG" 2>/dev/null || true
 echo
 c "✓ Termato is installed and running."
-c "  Open:  https://${APP_HOST}"
-if [ "$INSTALL_TYPE" = "tunnel" ]; then
-  c "  Reachable from anywhere via your secure tunnel — try it on your phone."
-fi
+c "  Access this machine from your phone or computer at: https://${APP_HOST}"
 
 # Termato is password-free: a device can only get in after it's authorised here at
 # the server. Offer to connect the first device right now; otherwise it can be done

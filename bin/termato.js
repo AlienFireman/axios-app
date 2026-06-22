@@ -6,6 +6,7 @@
 //   termato start              start the server (pm2)
 //   termato stop               stop the server
 //   termato restart            restart the server
+//   termato update             update to the latest release (--force to reinstall)
 //   termato clients            list authorised devices
 //   termato clients add        authorise a new device (shows a 6-digit code)
 //   termato clients remove N   revoke authorised device N (from the list)
@@ -50,7 +51,14 @@ function api(method, pathname, body) {
     const data = body ? JSON.stringify(body) : null;
     const req = http.request({
       host: '127.0.0.1', port: PORT, method, path: pathname,
-      headers: { 'Content-Type': 'application/json', ...(data ? { 'Content-Length': Buffer.byteLength(data) } : {}) },
+      // Mark this as a loopback call explicitly. The auth middleware trusts a
+      // direct on-box call by its x-forwarded-for, but if we DON'T set one,
+      // Next.js auto-injects the socket's remote address — and on some platforms
+      // (notably macOS dual-stack loopback) that value isn't one the allowlist
+      // recognises, so the middleware 401s our own local CLI. Setting it here is
+      // safe: public traffic always arrives via Cloudflare (CF-* headers present),
+      // which the loopback check separately rejects.
+      headers: { 'Content-Type': 'application/json', 'X-Forwarded-For': '127.0.0.1', ...(data ? { 'Content-Length': Buffer.byteLength(data) } : {}) },
     }, (res) => {
       let chunks = '';
       res.on('data', (d) => { chunks += d; });
@@ -133,7 +141,23 @@ async function cmdClientsAdd() {
   const start = await apiOrExit('POST', '/api/clients/enroll', { action: 'start' });
   if (start.status === 403) die('client management must be run on the server itself.');
   const { windowId, code } = start.body || {};
-  if (!code) die('could not open an enrollment window.');
+  if (!code) {
+    // Surface the real reason instead of a blanket "couldn't open a window". The
+    // most common cause is the loopback call being rejected by the auth layer
+    // (401) or the server returning an error page (5xx / non-JSON).
+    const status = start.status;
+    const detail = start.body?.error
+      ? `: ${start.body.error}`
+      : (start.body ? '' : ' (no JSON body — likely a server error page)');
+    if (status === 401) {
+      console.error(red('termato: the server did not recognise this as a local (loopback) call'));
+      console.error(dim(`  Got HTTP 401 from 127.0.0.1:${PORT}. Run this on the SERVER itself, not over a tunnel.`));
+      console.error(dim('  If you ARE on the server: check the Termato logs (pm2 logs termato) — the'));
+      console.error(dim('  loopback request is arriving with an unexpected x-forwarded-for header.'));
+      process.exit(1);
+    }
+    die(`could not open an enrollment window (HTTP ${status}${detail}).`);
+  }
 
   const pretty = `${code.slice(0, 3)} ${code.slice(3)}`;
   console.log('');
@@ -204,6 +228,87 @@ async function cmdClientsRemove(arg) {
   if (res.status !== 200) die(`could not remove device ${index}.`);
   const r = res.body?.removed;
   console.log(green(`✓ Removed device ${index}`) + (r?.label ? ` (${r.label})` : ''));
+}
+
+// ── update ──────────────────────────────────────────────────────────────────────
+// Drive the same self-updater the browser uses (app/api/update/route.js) over loopback:
+// GET to check, POST to kick off a job, then poll the job until the server restarts.
+async function cmdUpdate(flags) {
+  const force = flags.includes('--force') || flags.includes('-f');
+
+  process.stdout.write(dim('Checking for updates… '));
+  const check = await apiOrExit('GET', '/api/update');
+  const info = check.body || {};
+  console.log('');
+
+  if (!info.packaged) {
+    die('this is not a packaged install — updates only apply to the distributed build (use the Rebuild panel for a source checkout).');
+  }
+  if (info.error) {
+    console.log(red(`  Update check failed: ${info.error}`));
+    if (!force) process.exit(1);
+    console.log(dim('  Continuing anyway (--force).'));
+  }
+
+  if (!info.updateAvailable && !force) {
+    console.log(green('✓ Termato is up to date.') + dim(` (${info.currentShort || 'unknown'})`));
+    if (info.builtAt) console.log(dim(`  built ${new Date(info.builtAt).toLocaleString()}`));
+    console.log(dim('  Run “termato update --force” to reinstall the current release.'));
+    process.exit(0);
+  }
+
+  if (info.updateAvailable) {
+    console.log(bold('  Update available'));
+    console.log(`    current: ${info.currentShort || 'unknown'}`);
+    console.log(`    latest:  ${cyan(info.latestShort || 'unknown')}`);
+  } else {
+    console.log(dim('  Already on the latest commit — reinstalling (--force).'));
+  }
+  console.log('');
+
+  const start = await apiOrExit('POST', '/api/update');
+  if (start.status === 400) die(start.body?.error || 'updates only apply to a packaged install.');
+  const jobId = start.body?.jobId;
+  if (!jobId) die(`could not start the update (HTTP ${start.status}).`);
+  if (start.body?.alreadyRunning) console.log(dim('  An update is already running — following it…'));
+
+  process.stdout.write('  Updating (git reset + npm ci)… ');
+
+  // Poll the job. The server sets status:'restarting' just before it spawns a detached
+  // pm2 restart, so once we see that we're done — the loopback poll would die anyway as
+  // the process recycles.
+  let lastStatus = '';
+  for (;;) {
+    await new Promise((r) => setTimeout(r, 1500));
+    let res;
+    try {
+      res = await api('GET', `/api/update?jobId=${jobId}`);
+    } catch {
+      // Server went away mid-restart — treat as success (the restart was the last step).
+      console.log(green('done'));
+      console.log(green('✓ Update applied — Termato is restarting.'));
+      process.exit(0);
+    }
+    const job = res.body || {};
+    if (job.status === lastStatus) continue;
+    lastStatus = job.status;
+
+    if (job.status === 'update-failed' || job.status === 'restart-failed') {
+      console.log(red('failed'));
+      die(job.error || 'update failed.');
+    }
+    if (job.status === 'restarting') {
+      console.log(green('done'));
+      const failed = (job.migrations || []).filter((m) => !m.ok);
+      if (failed.length) {
+        console.log(red(`  ⚠ ${failed.length} migration(s) failed (update still applied):`));
+        for (const m of failed) console.log(dim(`    • ${m.id}: ${m.error}`));
+      }
+      console.log(green('✓ Update applied — Termato is restarting.'));
+      process.exit(0);
+    }
+    // status still 'updating' → keep waiting
+  }
 }
 
 // ── uninstall ─────────────────────────────────────────────────────────────────
@@ -323,6 +428,8 @@ function usage() {
   ${bold('termato stop')}               stop the server
   ${bold('termato restart')}            restart the server
 
+  ${bold('termato update')}             update to the latest release (--force to reinstall current)
+
   ${bold('termato clients')}            list authorised devices
   ${bold('termato clients add')}        authorise a new device
   ${bold('termato clients remove N')}   revoke authorised device N
@@ -337,6 +444,7 @@ function usage() {
     case 'start':   process.exit(cmdStart());
     case 'stop':    process.exit(cmdStop());
     case 'restart': process.exit(cmdRestart());
+    case 'update': return cmdUpdate(process.argv.slice(3));
     case 'uninstall': return cmdUninstall(process.argv.slice(3));
     case 'clients':
       if (!sub)               return cmdClientsList();
