@@ -350,6 +350,9 @@ if [ "$INSTALL_TYPE" = "tunnel" ]; then
   c "Configuring the local reverse proxy…"
   CADDYFILE="$INSTALL_DIR/private.Caddyfile"
   {
+    # Config version marker — kept in sync with migrations/001-caddy-config-v1.sh so the
+    # updater's migration can tell whether an existing install needs regenerating.
+    printf '# termato-caddy-config-version: 1\n\n'
     # admin off: don't fight an existing Caddy for the :2019 admin API.
     printf '{\n\tadmin off\n\tauto_https off\n}\n\n'
     printf 'http://%s:%s {\n\tbind 127.0.0.1\n\treverse_proxy 127.0.0.1:%s\n}\n\n' "$APP_HOST" "$CADDY_PORT" "$APP_PORT"
