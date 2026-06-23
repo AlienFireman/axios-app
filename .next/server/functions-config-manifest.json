@@ -3,6 +3,7 @@
   "functions": {
     "/api/auth/preview": {},
     "/api/chat": {},
+    "/api/claude-token": {},
     "/api/claude-usage": {},
     "/api/control": {},
     "/api/events": {},

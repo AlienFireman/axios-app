@@ -60,6 +60,12 @@
       "namedRegex": "^/api/chat(?:/)?$"
     },
     {
+      "page": "/api/claude-token",
+      "regex": "^/api/claude\\-token(?:/)?$",
+      "routeKeys": {},
+      "namedRegex": "^/api/claude\\-token(?:/)?$"
+    },
+    {
       "page": "/api/claude-usage",
       "regex": "^/api/claude\\-usage(?:/)?$",
       "routeKeys": {},
