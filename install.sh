@@ -24,7 +24,8 @@
 # (never replaces it), never edits system web-server config, and appends to pm2.
 #
 # Non-interactive: set TERMATO_NICKNAME (legacy: TERMATO_USERNAME) to skip all prompts. Termato is password-free —
-# devices are authorised after install with `termato clients add`.
+# instead, each CLIENT (a browser session you sign in from, e.g. on your phone or
+# computer) is authorised individually after install with `termato clients add`.
 # Start-on-boot defaults to enabled; set TERMATO_ENABLE_BOOT=0 to skip it (interactively you're asked).
 #
 # (Advanced/legacy: TERMATO_INSTALL_TYPE=server runs the old public-host + system-Caddy
@@ -47,9 +48,10 @@ ask() { # ask VARNAME "prompt" [default]
   printf -v "$_n" '%s' "$_v"
 }
 
-# Termato is PASSWORD-FREE. Devices are authorised individually via `termato clients
-# add` — a 6-digit code shown at the server console plus an operator confirmation —
-# so no login password is chosen at install time. See app/lib/clients.cjs.
+# Termato is PASSWORD-FREE. Each client (a browser session that signs in to this
+# server) is authorised individually via `termato clients add` — a 6-digit code shown
+# at the server console plus an operator confirmation — so no login password is chosen
+# at install time. See app/lib/clients.cjs.
 
 # Quiet install: noisy sub-command output goes to $LOG; we print only clean
 # [termato] step lines and dump the log tail if a step fails. Env vars below silence
@@ -218,7 +220,7 @@ if ! have pm2; then
 fi
 have pm2 || die "pm2 install failed."
 
-# Put the `termato` CLI on PATH (start/stop/restart + device authorisation). Symlink
+# Put the `termato` CLI on PATH (start/stop/restart + client authorisation). Symlink
 # to the install copy so updates are picked up automatically. Try a system dir, then
 # fall back to ~/.local/bin (added to PATH below if used).
 chmod +x "$INSTALL_DIR/bin/termato.js" 2>/dev/null || true
@@ -248,8 +250,8 @@ else
 fi
 
 # ── 5. .env.local (git-ignored; Next loads it for build + runtime) ───────────
-# Termato is password-free. Mint one independent random key used to SIGN per-device
-# session cookies — each authorised device gets its own cookie (app/lib/clients.cjs).
+# Termato is password-free. Mint one independent random key used to SIGN per-client
+# session cookies — each authorised client gets its own cookie (app/lib/clients.cjs).
 TERMATO_SESSION_SECRET="$(node -e 'process.stdout.write(require("crypto").randomBytes(32).toString("hex"))')" \
   || die "Failed to generate session secret."
 
@@ -519,18 +521,21 @@ echo
 c "✓ Termato is installed and running."
 c "  Access this machine from your phone or computer at: https://${APP_HOST}"
 
-# Termato is password-free: a device can only get in after it's authorised here at
-# the server. Offer to connect the first device right now; otherwise it can be done
-# anytime with `termato clients add`.
+# Termato is password-free: a client (a browser session you sign in from, e.g. on your
+# phone or computer) can only get in after it's authorised here at the server. Offer to
+# authorise the first one right now; otherwise it can be done anytime with
+# `termato clients add`.
 TERMATO_CLI="$INSTALL_DIR/bin/termato.js"
 echo
+c "  A 'client' is a browser session that signs in to this server (phone or computer)."
+c "  Each one is authorised here at the server with a 6-digit code."
 if [ -t 0 ] && [ "${TERMATO_CONNECT_CLIENT:-}" != "0" ]; then
-  printf '\033[1;36m[termato]\033[0m Connect a device now? [Y/n] '
+  printf '\033[1;36m[termato]\033[0m Authorise your first client now? [Y/n] '
   read -r _connect || _connect=""
   case "$_connect" in
-    [Nn]*) c "Skipped. Authorise a device anytime with:  termato clients add" ;;
-    *)     "$NODE_BIN" "$TERMATO_CLI" clients add || warn "Device enrollment didn't complete — run 'termato clients add' to retry." ;;
+    [Nn]*) c "Skipped. Authorise a client anytime with:  termato clients add" ;;
+    *)     "$NODE_BIN" "$TERMATO_CLI" clients add || warn "Client authorisation didn't complete — run 'termato clients add' to retry." ;;
   esac
 else
-  c "Authorise your first device with:  termato clients add"
+  c "Authorise your first client with:  termato clients add"
 fi

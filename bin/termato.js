@@ -7,12 +7,16 @@
 //   termato stop               stop the server
 //   termato restart            restart the server
 //   termato update             update to the latest release (--force to reinstall)
-//   termato clients            list authorised devices
-//   termato clients add        authorise a new device (shows a 6-digit code)
-//   termato clients remove N   revoke authorised device N (from the list)
+//   termato clients            list authorised clients
+//   termato clients add        authorise a new client (shows a 6-digit code)
+//   termato clients remove N   revoke authorised client N (from the list)
+//
+// A "client" is anywhere you sign in to this Termato server from — typically a web
+// browser session on a phone or computer. Each client is authorised individually and
+// gets its own signed cookie.
 //
 // The clients commands talk to the LOCALLY-RUNNING server over loopback only, which
-// is what makes "direct server access" the trust anchor for authorising any device.
+// is what makes "direct server access" the trust anchor for authorising any client.
 // See app/lib/clients.cjs.
 
 const fs = require('node:fs');
@@ -118,12 +122,14 @@ async function cmdClientsList() {
   if (res.status === 403) die('client management must be run on the server itself.');
   const list = res.body?.clients || [];
   if (!list.length) {
-    console.log(dim('No authorised devices. Add one with: termato clients add'));
+    console.log(dim('No authorised clients yet.'));
+    console.log(dim('A client is a browser session you sign in from (phone or computer).'));
+    console.log(dim('Authorise one with: termato clients add'));
     return;
   }
-  console.log(bold('Authorised devices:'));
+  console.log(bold('Authorised clients') + dim('  (browser sessions allowed to sign in):'));
   list.forEach((cl, i) => {
-    const label = cl.label || cl.userAgent || 'device';
+    const label = cl.label || cl.userAgent || 'client';
     const loc = [cl.ip, cl.country].filter(Boolean).join(' · ');
     console.log(`  ${bold(`${i + 1}.`)} ${label}`);
     console.log(`     ${dim(`${loc || 'unknown'} · last active ${relTime(cl.lastSeen)} · added ${relTime(cl.createdAt)}`)}`);
@@ -161,12 +167,15 @@ async function cmdClientsAdd() {
 
   const pretty = `${code.slice(0, 3)} ${code.slice(3)}`;
   console.log('');
-  console.log(bold('  Connect a device'));
-  console.log('  On the new device, open Termato and enter this code:');
+  console.log(bold('  Authorise a new client'));
+  console.log(dim('  A client is a browser session that can sign in to this server'));
+  console.log(dim('  (e.g. Termato open on your phone or laptop).'));
+  console.log('');
+  console.log('  On that browser, open Termato and enter this code:');
   console.log('');
   console.log(`        ${cyan(bold(pretty))}`);
   console.log('');
-  console.log(dim('  Waiting for a device… (expires in 5 minutes, Ctrl-C to cancel)'));
+  console.log(dim('  Waiting for a client… (expires in 5 minutes, Ctrl-C to cancel)'));
 
   // Poll the window until something happens.
   for (;;) {
@@ -193,12 +202,13 @@ async function cmdClientsAdd() {
       const d = st.candidate || {};
       const loc = [d.ip, d.country].filter(Boolean).join(' · ') || 'unknown';
       console.log('');
-      console.log(bold('  A device entered the correct code:'));
+      console.log(bold('  A client entered the correct code:'));
       console.log(`    IP:      ${d.ip || 'unknown'}`);
       console.log(`    Country: ${d.country || 'unknown'}`);
-      console.log(`    Device:  ${d.userAgent || 'unknown'}`);
+      console.log(`    Browser: ${d.userAgent || 'unknown'}`);
       console.log('');
-      const answer = (await prompt('  Authorise this device? [y/N] ')).toLowerCase();
+      console.log(dim('  Only approve this if it matches the client you are connecting right now.'));
+      const answer = (await prompt('  Authorise this client? [y/N] ')).toLowerCase();
       const approve = answer === 'y' || answer === 'yes';
 
       const decide = await apiOrExit('POST', '/api/clients/enroll', {
@@ -207,9 +217,9 @@ async function cmdClientsAdd() {
       if (decide.status !== 200) die(`could not finalise (${decide.body?.error || decide.status}).`);
 
       if (approve) {
-        console.log(green('  ✓ Device added!') + ` (${loc})`);
+        console.log(green('  ✓ Client authorised!') + ` (${loc})`);
       } else {
-        console.log(dim('  Declined. The device was not authorised.'));
+        console.log(dim('  Declined. The client was not authorised.'));
       }
       process.exit(0);
     }
@@ -224,10 +234,11 @@ async function cmdClientsRemove(arg) {
   if (!Number.isInteger(index) || index < 1) die('usage: termato clients remove <number>');
   const res = await apiOrExit('DELETE', '/api/clients', { index });
   if (res.status === 403) die('client management must be run on the server itself.');
-  if (res.status === 404) die(`no device ${index} (run “termato clients” to see the list).`);
-  if (res.status !== 200) die(`could not remove device ${index}.`);
+  if (res.status === 404) die(`no client ${index} (run “termato clients” to see the list).`);
+  if (res.status !== 200) die(`could not remove client ${index}.`);
   const r = res.body?.removed;
-  console.log(green(`✓ Removed device ${index}`) + (r?.label ? ` (${r.label})` : ''));
+  console.log(green(`✓ Removed client ${index}`) + (r?.label ? ` (${r.label})` : ''));
+  console.log(dim('  That browser session is signed out immediately and must re-authorise to return.'));
 }
 
 // ── update ──────────────────────────────────────────────────────────────────────
@@ -430,9 +441,10 @@ function usage() {
 
   ${bold('termato update')}             update to the latest release (--force to reinstall current)
 
-  ${bold('termato clients')}            list authorised devices
-  ${bold('termato clients add')}        authorise a new device
-  ${bold('termato clients remove N')}   revoke authorised device N
+  ${dim('A client is a browser session that can sign in to this server (phone/computer).')}
+  ${bold('termato clients')}            list authorised clients
+  ${bold('termato clients add')}        authorise a new client (shows a 6-digit code to enter)
+  ${bold('termato clients remove N')}   revoke authorised client N
 
   ${bold('termato uninstall')}          remove Termato from this machine (--yes to skip the prompt)
 `);
