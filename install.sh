@@ -137,13 +137,16 @@ if [ "$INSTALL_TYPE" = "tunnel" ]; then
         c "$(printf '\033[1;31m[termato]\033[0m That is not a valid nickname (lowercase letters, digits, hyphens only). Try again.')"
         TERMATO_NICKNAME=""; continue
       fi
-      c "Checking that '${TERMATO_NICKNAME}' is available and setting up your secure tunnel…"
+      c "Checking that '${TERMATO_NICKNAME}' is available…"
       code="$(curl -sS -X POST -H 'Content-Type: application/json' \
         ${TERMATO_PROVISION_KEY:+-H "X-Provision-Key: ${TERMATO_PROVISION_KEY}"} \
         --data "{\"username\":\"${TERMATO_NICKNAME}\"}" \
         -o "$BUNDLE" -w '%{http_code}' "${TERMATO_PROVISION_URL%/}/provision")" \
         || die "Couldn't reach the provisioning service at ${TERMATO_PROVISION_URL}. Check your connection and try again."
-      [ "$code" = "200" ] && break
+      if [ "$code" = "200" ]; then
+        c "Nickname '${TERMATO_NICKNAME}' is available — reserving it and preparing your secure tunnel…"
+        break
+      fi
       # Strip ANSI colour codes from any server detail so the message reads cleanly.
       detail="$(jq -r '.detail // .error // empty' "$BUNDLE" 2>/dev/null | sed $'s/\033\\[[0-9;]*m//g' | tr '\n' ' ')"
       case "$code" in
@@ -153,7 +156,7 @@ if [ "$INSTALL_TYPE" = "tunnel" ]; then
         409)
           # Nickname already taken. Re-prompt for a different one (unless it was preset).
           [ -n "$_preset_nick" ] && die "The machine nickname '${TERMATO_NICKNAME}' is already taken. Pick a different one and re-run."
-          c "$(printf "\033[1;31m[termato]\033[0m The nickname '%s' is already taken by another Termato user. Pick a different one." "${TERMATO_NICKNAME}")"
+          c "$(printf "\033[1;31m[termato]\033[0m The nickname '%s' is already taken. Pick a different one." "${TERMATO_NICKNAME}")"
           TERMATO_NICKNAME=""; continue ;;
         *)   die "Provisioning failed (the server couldn't set up your account).${detail:+ Details: $detail}" ;;
       esac
