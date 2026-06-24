@@ -103,7 +103,7 @@ self.__SERVER_FILES_MANIFEST={
     },
     "outputFileTracingRoot": "/home/duckie/axios",
     "allowedDevOrigins": [
-      "*.fordweb.io"
+      "*.termato.com"
     ],
     "cacheComponents": false,
     "cacheLife": {

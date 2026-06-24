@@ -50,7 +50,13 @@ const nextConfig = {
     root: process.cwd(),
     resolveAlias: turbopackAliases(),
   },
-  allowedDevOrigins: ['*.fordweb.io'],
+  // Derive the allowed dev origins from this install's own domain (set in
+  // .env.local) rather than hardcoding one maintainer's domain. Only affects
+  // `next dev`; empty when unconfigured.
+  allowedDevOrigins: (() => {
+    const d = process.env.TERMATO_PREVIEW_DOMAIN || process.env.TERMATO_COOKIE_DOMAIN || '';
+    return d ? [`*.${d}`] : [];
+  })(),
   devIndicators: false,
   // node-pty (and the prebuilt fork) are native modules used only by the server
   // (terminals.js, imported by some API routes). Keep them OUT of the bundle so

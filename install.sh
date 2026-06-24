@@ -116,10 +116,17 @@ if [ "$INSTALL_TYPE" = "tunnel" ]; then
   if [ -n "${TERMATO_PROVISION_BUNDLE:-}" ]; then
     BUNDLE="$TERMATO_PROVISION_BUNDLE"
   else
-    # The machine nickname identifies this box (it becomes part of your preview
-    # subdomains). Accept the legacy TERMATO_USERNAME override for backward compat.
+    # The nickname identifies this Termato installation: it becomes your subdomain
+    # ({nickname}.termato.com) and must be unique across all Termato users. Accept the
+    # legacy TERMATO_USERNAME override for backward compat.
     : "${TERMATO_NICKNAME:=${TERMATO_USERNAME:-}}"
-    ask TERMATO_NICKNAME "$(printf '\033[1;36m[termato]\033[0m Choose a nickname for this machine (lowercase letters, digits, hyphens)')"
+    c "Pick a nickname for this Termato installation."
+    c "$(printf "  • It becomes your subdomain — you'll reach this machine at \033[1;32m{nickname}.termato.com\033[0m")"
+    c "  • It must be unique across all Termato users."
+    c "  • One nickname per installation. Planning to run Termato on more than one machine?"
+    c "    Use a machine-specific name (e.g. 'dan-laptop'). Just the one machine? Your name or"
+    c "    any nickname is fine."
+    ask TERMATO_NICKNAME "$(printf '\033[1;36m[termato]\033[0m Nickname (lowercase letters, digits, hyphens)')"
     [[ "$TERMATO_NICKNAME" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$ ]] || die "Invalid machine nickname (must be a DNS label: lowercase letters, digits, hyphens)."
     c "Setting up your secure tunnel and preview subdomains…"
     TMP_BUNDLE="$(mktemp)"; chmod 600 "$TMP_BUNDLE"; BUNDLE="$TMP_BUNDLE"
@@ -519,7 +526,7 @@ fi
 rm -f "$LOG" 2>/dev/null || true
 echo
 c "✓ Termato is installed and running."
-c "  Access this machine from your phone or computer at: https://${APP_HOST}"
+printf '\033[1;36m[termato]\033[0m   Access this machine from your phone or computer at: \033[1;32mhttps://%s\033[0m\n' "${APP_HOST}"
 
 # Termato is password-free: a client (a browser session you sign in from, e.g. on your
 # phone or computer) can only get in after it's authorised here at the server. Offer to

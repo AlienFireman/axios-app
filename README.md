@@ -19,7 +19,7 @@ git clone https://github.com/AlienFireman/termato-app.git ~/.termato && bash ~/.
 </div>
 
 <!--
-  TODO (Dan): drop hero media here — ideally a short GIF (or side-by-side stills) of
+  TODO: drop hero media here — ideally a short GIF (or side-by-side stills) of
   the SAME session running on desktop and on a phone, the terminal, and the chat view.
   Replace this comment, e.g.:
   <p align="center"><img src="docs/hero.gif" alt="Termato on desktop and phone" width="860"></p>
