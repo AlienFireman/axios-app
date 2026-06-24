@@ -126,26 +126,38 @@ if [ "$INSTALL_TYPE" = "tunnel" ]; then
     c "  • One nickname per installation. Planning to run Termato on more than one machine?"
     c "    Use a machine-specific name (e.g. 'dan-laptop'). Just the one machine? Your name or"
     c "    any nickname is fine."
-    ask TERMATO_NICKNAME "$(printf '\033[1;36m[termato]\033[0m Nickname (lowercase letters, digits, hyphens)')"
-    [[ "$TERMATO_NICKNAME" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$ ]] || die "Invalid machine nickname (must be a DNS label: lowercase letters, digits, hyphens)."
-    c "Setting up your secure tunnel and preview subdomains…"
     TMP_BUNDLE="$(mktemp)"; chmod 600 "$TMP_BUNDLE"; BUNDLE="$TMP_BUNDLE"
-    code="$(curl -sS -X POST -H 'Content-Type: application/json' \
-      ${TERMATO_PROVISION_KEY:+-H "X-Provision-Key: ${TERMATO_PROVISION_KEY}"} \
-      --data "{\"username\":\"${TERMATO_NICKNAME}\"}" \
-      -o "$BUNDLE" -w '%{http_code}' "${TERMATO_PROVISION_URL%/}/provision")" \
-      || die "Couldn't reach the provisioning service at ${TERMATO_PROVISION_URL}. Check your connection and try again."
-    if [ "$code" != "200" ]; then
+    # Loop so a taken/invalid nickname re-prompts in place instead of aborting the install.
+    # When TERMATO_NICKNAME is preset (non-interactive), we don't loop — a clash just dies.
+    while :; do
+      _preset_nick="${TERMATO_NICKNAME:-}"
+      ask TERMATO_NICKNAME "$(printf '\033[1;36m[termato]\033[0m Nickname (lowercase letters, digits, hyphens)')"
+      if ! [[ "$TERMATO_NICKNAME" =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$ ]]; then
+        [ -n "$_preset_nick" ] && die "Invalid machine nickname (must be a DNS label: lowercase letters, digits, hyphens)."
+        c "$(printf '\033[1;31m[termato]\033[0m That is not a valid nickname (lowercase letters, digits, hyphens only). Try again.')"
+        TERMATO_NICKNAME=""; continue
+      fi
+      c "Checking that '${TERMATO_NICKNAME}' is available and setting up your secure tunnel…"
+      code="$(curl -sS -X POST -H 'Content-Type: application/json' \
+        ${TERMATO_PROVISION_KEY:+-H "X-Provision-Key: ${TERMATO_PROVISION_KEY}"} \
+        --data "{\"username\":\"${TERMATO_NICKNAME}\"}" \
+        -o "$BUNDLE" -w '%{http_code}' "${TERMATO_PROVISION_URL%/}/provision")" \
+        || die "Couldn't reach the provisioning service at ${TERMATO_PROVISION_URL}. Check your connection and try again."
+      [ "$code" = "200" ] && break
       # Strip ANSI colour codes from any server detail so the message reads cleanly.
       detail="$(jq -r '.detail // .error // empty' "$BUNDLE" 2>/dev/null | sed $'s/\033\\[[0-9;]*m//g' | tr '\n' ' ')"
       case "$code" in
         503) die "Provisioning is currently turned off. Ask the operator to enable it, then re-run." ;;
         401) die "Provisioning needs an access key. Set TERMATO_PROVISION_KEY and re-run." ;;
-        409) die "The machine nickname '${TERMATO_NICKNAME}' is already taken. Pick a different one and re-run." ;;
         429) die "Too many attempts — wait a few minutes and re-run." ;;
+        409)
+          # Nickname already taken. Re-prompt for a different one (unless it was preset).
+          [ -n "$_preset_nick" ] && die "The machine nickname '${TERMATO_NICKNAME}' is already taken. Pick a different one and re-run."
+          c "$(printf "\033[1;31m[termato]\033[0m The nickname '%s' is already taken by another Termato user. Pick a different one." "${TERMATO_NICKNAME}")"
+          TERMATO_NICKNAME=""; continue ;;
         *)   die "Provisioning failed (the server couldn't set up your account).${detail:+ Details: $detail}" ;;
       esac
-    fi
+    done
   fi
   [ -f "$BUNDLE" ] || die "Bundle not found: $BUNDLE"
   jq -e . "$BUNDLE" >/dev/null 2>&1 || die "Bundle is not valid JSON: $BUNDLE"
@@ -509,13 +521,51 @@ fi
 
 if [ "$_enable_boot" = "1" ]; then
   c "Enabling start-on-boot…"
-  STARTUP_CMD="$(pm2 startup 2>>"$LOG" | grep -m1 'env PATH=' || true)"
-  if [ -n "$STARTUP_CMD" ]; then
-    if eval "$STARTUP_CMD" >>"$LOG" 2>&1; then c "Start-on-boot enabled."; else warn "Boot-start step failed; enable it later with: pm2 startup"; fi
-  else
-    warn "Couldn't set up start-on-boot automatically. Run 'pm2 startup' later and follow its instructions."
-  fi
   pm2 save >>"$LOG" 2>&1 || true
+  if [ "$OS" = "Darwin" ]; then
+    # macOS: a per-USER LaunchAgent that runs `pm2 resurrect` at login. This needs
+    # NO sudo (unlike `pm2 startup`, which registers a system LaunchDaemon and so
+    # prompts for a password the piped `curl | bash` install can't supply → the
+    # "Boot-start step failed" warning). Runs at login under the user's own pm2.
+    PM2_BIN="$(command -v pm2 || true)"
+    LA_DIR="$HOME/Library/LaunchAgents"
+    PLIST="$LA_DIR/com.termato.pm2.plist"
+    mkdir -p "$LA_DIR"
+    cat > "$PLIST" <<PLIST_EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.termato.pm2</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>${NODE_BIN}</string>
+    <string>${PM2_BIN}</string>
+    <string>resurrect</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key><string>${NODE_DIR}/bin:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin</string>
+    <key>PM2_HOME</key><string>${HOME}/.pm2</string>
+  </dict>
+  <key>RunAtLoad</key><true/>
+  <key>StandardOutPath</key><string>${HOME}/.pm2/launchagent.log</string>
+  <key>StandardErrorPath</key><string>${HOME}/.pm2/launchagent.log</string>
+</dict>
+</plist>
+PLIST_EOF
+    # Re-register cleanly (ignore "not loaded" on first run); user-domain → no sudo.
+    launchctl unload "$PLIST" >>"$LOG" 2>&1 || true
+    if launchctl load -w "$PLIST" >>"$LOG" 2>&1; then c "Start-on-boot enabled (login)."; else warn "Couldn't register the boot LaunchAgent; enable it later with: launchctl load -w $PLIST"; fi
+  else
+    STARTUP_CMD="$(pm2 startup 2>>"$LOG" | grep -m1 'env PATH=' || true)"
+    if [ -n "$STARTUP_CMD" ]; then
+      [ -n "$SUDO" ] && [ -t 0 ] && $SUDO -v 2>>"$LOG" || true   # refresh sudo (timestamp may have lapsed during the build)
+      if eval "$STARTUP_CMD" >>"$LOG" 2>&1; then c "Start-on-boot enabled."; else warn "Boot-start step failed; enable it later with: pm2 startup"; fi
+    else
+      warn "Couldn't set up start-on-boot automatically. Run 'pm2 startup' later and follow its instructions."
+    fi
+  fi
 else
   c "Skipped start-on-boot. Enable it anytime with: pm2 startup && pm2 save"
 fi

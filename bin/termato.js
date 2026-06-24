@@ -335,15 +335,33 @@ function readEnvLocal() {
   return out;
 }
 
-// Ask the hub to remove this user's tunnel + subdomains. Best-effort.
-async function deprovision(provisionUrl, username, key) {
+// Read this install's tunnel secret from its cloudflared credentials file. The hub uses
+// it as PROOF OF OWNERSHIP when deprovisioning — only the holder of this secret may tear
+// the tunnel down. Returns '' if not found (deprovision then fails closed on the hub).
+function readTunnelSecret() {
+  try {
+    const dir = path.join(INSTALL_DIR, '.cloudflared');
+    for (const f of fs.readdirSync(dir)) {
+      if (!f.endsWith('.json')) continue;
+      try {
+        const j = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'));
+        if (j && j.TunnelSecret) return String(j.TunnelSecret);
+      } catch { /* not a credentials json */ }
+    }
+  } catch { /* no .cloudflared dir */ }
+  return '';
+}
+
+// Ask the hub to remove this user's tunnel + subdomains. Best-effort. We must prove we
+// own the tunnel by sending its secret — the hub will refuse (403) without it.
+async function deprovision(provisionUrl, username, key, secret) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 20000);
   try {
     const res = await fetch(`${provisionUrl.replace(/\/$/, '')}/deprovision`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...(key ? { 'X-Provision-Key': key } : {}) },
-      body: JSON.stringify({ username }),
+      body: JSON.stringify({ username, secret }),
       signal: ctrl.signal,
     });
     let detail = '';
@@ -402,10 +420,12 @@ async function cmdUninstall(flags) {
   if (username) {
     process.stdout.write(`  Removing tunnel + subdomains for '${username}'… `);
     try {
-      const r = await deprovision(provisionUrl, username, key);
+      const secret = readTunnelSecret();
+      const r = await deprovision(provisionUrl, username, key, secret);
       if (r.ok) console.log(green('done'));
       else if (r.status === 503) console.log(red('skipped') + dim(' (hub provisioning is off — ask the operator to remove it)'));
       else if (r.status === 401) console.log(red('skipped') + dim(' (hub needs a provisioning key)'));
+      else if (r.status === 403) console.log(red('skipped') + dim(' (hub couldn\'t verify tunnel ownership — ask the operator to remove it)'));
       else console.log(red(`failed (${r.status})`) + (r.detail ? dim(` ${r.detail}`) : ''));
     } catch {
       console.log(red('skipped') + dim(` (couldn't reach ${provisionUrl})`));
