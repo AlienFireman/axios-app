@@ -378,7 +378,7 @@ if [ "$INSTALL_TYPE" = "tunnel" ]; then
       printf '\t\treverse_proxy 127.0.0.1:%s {\n' "$pport"
       printf '\t\t\theader_up Host "localhost:%s"\n' "$pport"
       printf '\t\t\theader_up -Origin\n'
-      printf '\t\t\theader_up Cookie "termato_auth=[^;]*" "termato_auth=removed"\n'
+      printf '\t\t\theader_up Cookie "termato_auth[A-Za-z0-9_]*=[^;]*" "termato_auth=removed"\n'
       printf '\t\t\theader_down Content-Security-Policy "frame-ancestors https://%s"\n' "$APP_HOST"
       printf '\t\t\theader_down -X-Frame-Options\n'
       printf '\t\t\theader_down -Cache-Control\n'
@@ -451,7 +451,7 @@ ${HOSTS} {
 		reverse_proxy 127.0.0.1:{http.regexp.pm.1} {
 			header_up Host "localhost:{http.regexp.pm.1}"
 			header_up -Origin
-			header_up Cookie "termato_auth=[^;]*" "termato_auth=removed"
+			header_up Cookie "termato_auth[A-Za-z0-9_]*=[^;]*" "termato_auth=removed"
 			header_down Content-Security-Policy "frame-ancestors https://${APP_HOST}"
 			header_down -X-Frame-Options
 			header_down -Cache-Control
